@@ -3,6 +3,8 @@
 STATE_FILE="$HOME/.gym.state"
 test -f $STATE_FILE && source "$STATE_FILE"
 
+SUDO="sudo"
+
 copyright() {
     cat <<EOT
 gpg-yubikey-maneger - a yubikey offline manager for gpg keys
@@ -19,7 +21,7 @@ cmd_ykman() {
 }
 
 show() {
-    printf "yubikey: %s\n" "${GYM_YK_DEV:-unset. run detect.}"
+    printf "yubikey:\t%s\nsd/usb:\t\t%s\n" "${GYM_YK_DEV:-unset. run yk-detect.}" "${GYM_SD_DEV:-unset. run sd-detect.}"
 }
 
 yk_info() {
@@ -39,6 +41,77 @@ yk_detect() {
     fi
 }
 
+sd_info() {
+    printf "Selected device: %s\n\n%s\n" "${GYM_SD_DEV:-unset. run detect.}" "$(lsblk $GYM_SD_DEV)"
+}
+
+sd_detect() {
+    local sd_selected
+    sd_selected=$(lsblk -l -O --json | jq '.blockdevices[] | {name,hotplug,type,path,"disc-max"} | select (.type=="disk" and .hotplug==true) | .name
++ " " + .path + " " + ."disc-max"' | fzf --prompt "please select your usb/sd card")
+
+    if test -n "$sd_selected"; then
+        export GYM_SD_DEV="$(echo $sd_selected | awk '{print $2}')"
+
+        write_state
+    fi
+}
+
+sd_setup() {
+    # sudo cryptsetup luksFormat /dev/mmcblk0p1
+    # sudo cryptsetup luksOpen /dev/mmcblk0p1 gym-crypt
+    # sudo mkfs.ext4 /dev/mapper/gym-crypt
+    # sudo cryptsetup luksClose gym-crypt
+    echo "todo"
+}
+
+sd_mount() {
+    if test -z "$GYM_SD_DEV"; then
+        echo "please select your SD/USB device with sd-detect"
+        exit 1
+    fi
+
+    local gym_part gym_mnt
+    gym_part="${GYM_SD_DEV}p1"
+    gym_mnt="/mnt/gym-sd"
+    gym_crypt="/dev/mapper/gym-crypt"
+
+    printf "About to luksOpen and mount %s to %s -> %s\n" "$gym_part" "$gym_crypt" "$gym_mnt"
+
+    test -b "$gym_crypt" || "$SUDO" cryptsetup luksOpen "$gym_part" gym-crypt
+    test -d "$gym_mnt" || "$SUDO" mkdir "$gym_mnt"
+
+    $SUDO umount "$gym_mnt" 2>/dev/null
+
+    $SUDO mount "$gym_crypt" "$gym_mnt"
+    if test ! -d "$gym_mnt/lost+found"; then
+        echo "error mounting drive"
+        exit 1
+    fi
+}
+
+sd_umount() {
+    if test -z "$GYM_SD_DEV"; then
+        echo "please select your SD/USB device with sd-detect"
+        exit 1
+    fi
+
+    local gym_part gym_mnt
+    gym_part="${GYM_SD_DEV}p1"
+    gym_mnt="/mnt/gym-sd"
+    gym_crypt="/dev/mapper/gym-crypt"
+
+    printf "About to luksClose and umount %s to %s -> %s\n" "$gym_part" "$gym_crypt" "$gym_mnt"
+
+    $SUDO umount "$gym_mnt" 2>/dev/null
+    test -b "$gym_crypt" || "$SUDO" cryptsetup luksClose gym-crypt
+
+    if test -d "$gym_mnt/lost+found"; then
+        echo "error unmounting drive"
+        exit 1
+    fi
+}
+
 yk_prereq() {
     cmd_ykman info | grep -q "OpenPGP.*Enabled"
     if [[ $? -ne 0 ]]; then
@@ -51,6 +124,7 @@ yk_prereq() {
 write_state() {
     cat >"$STATE_FILE" <<EOF
 GYM_YK_DEV="$GYM_YK_DEV"
+GYM_SD_DEV="$GYM_SD_DEV"
 EOF
 }
 
@@ -61,6 +135,10 @@ case "$command" in
     show) show ;;
     yk-info) yk_info ;;
     yk-detect) yk_detect ;;
+    sd-info) sd_info ;;
+    sd-detect) sd_detect ;;
+    sd-mount) sd_mount ;;
+    sd-umount) sd_umount ;;
     *) copyright ;;
 esac
 
