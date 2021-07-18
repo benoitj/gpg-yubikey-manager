@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+STATE_FILE="$HOME/.gym.state"
+test -f $STATE_FILE && source "$STATE_FILE"
+
 copyright() {
     cat <<EOT
 gpg-yubikey-maneger - a yubikey offline manager for gpg keys
@@ -11,8 +14,38 @@ the Free Software Foundation; version 2 of the License.
 EOT
 }
 
+show() {
+    printf "yubikey: %s\n" "${GYM_YK_DEV:-unset. run detect.}"
+}
+
+yk_info() {
+    printf "Selected yubikey: %s\n\n%s\n" "${GYM_YK_DEV:-unset. run detect.}" "$(ykman --device $GYM_YK_DEV info)"
+}
+
+yk_detect() {
+    local yk_selected
+    yk_selected=$(ykman list | fzf --prompt "please select the yubikey to use")
+
+    if test -n "$yk_selected"; then
+        export GYM_YK_DEV="${yk_selected##*Serial: }"
+        write_state
+    fi
+}
+
+write_state() {
+    cat >"$STATE_FILE" <<EOF
+GYM_YK_DEV="$GYM_YK_DEV"
+EOF
+}
+
 command="$1"
 shift
 
-[[ -z $command || $command == "copyright" ]] && copyright
+case "$command" in
+    show) show ;;
+    yk-info) yk_info ;;
+    yk-detect) yk_detect ;;
+    *) copyright ;;
+esac
+
 exit 0
