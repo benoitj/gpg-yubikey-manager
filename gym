@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+copyright() {
+    cat <<EOT
+gpg-yubikey-maneger - a yubikey offline manager for gpg keys
+Copyright (C) 2021 Benoit Joly
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
+EOT
+}
+
+command="$1"
+shift
+
+[[ -z $command || $command == "copyright" ]] && copyright
+exit 0
