@@ -14,6 +14,10 @@ the Free Software Foundation; version 2 of the License.
 EOT
 }
 
+cmd_ykman() {
+    test -n "$GYM_YK_DEV" && ykman --device "$GYM_YK_DEV" "$@"
+}
+
 show() {
     printf "yubikey: %s\n" "${GYM_YK_DEV:-unset. run detect.}"
 }
@@ -28,7 +32,19 @@ yk_detect() {
 
     if test -n "$yk_selected"; then
         export GYM_YK_DEV="${yk_selected##*Serial: }"
+
+        yk_prereq
+
         write_state
+    fi
+}
+
+yk_prereq() {
+    cmd_ykman info | grep -q "OpenPGP.*Enabled"
+    if [[ $? -ne 0 ]]; then
+        printf "Error: your yubikey does not support OpenPGP\n\n"
+        yk_info
+        exit 1
     fi
 }
 
