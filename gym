@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+unset GNUHOME
+
 STATE_FILE="$HOME/.gym.state"
 test -f $STATE_FILE && source "$STATE_FILE"
 
@@ -121,11 +123,25 @@ yk_prereq() {
     fi
 }
 
+create_gnuhome() {
+    GNUPGHOME="$(mktemp -d -t 'gym.XXXXXXXXXX')"
+    export GNUPGHOME
+
+    printf "created a temporary home for your keys here %s\n\nmake sure to export GNUPGHOME=%s\nor run: eval \$($0 eval-bash)\n" "$GNUPGHOME" "$GNUPGHOME"
+
+    write_state
+}
+
 write_state() {
     cat >"$STATE_FILE" <<EOF
 GYM_YK_DEV="$GYM_YK_DEV"
 GYM_SD_DEV="$GYM_SD_DEV"
+GNUPGHOME="$GNUPGHOME"
 EOF
+}
+
+eval_bash() {
+    printf "export GNUPGHOME=\"%s\"\n" "$GNUPGHOME"
 }
 
 command="$1"
@@ -139,6 +155,8 @@ case "$command" in
     sd-detect) sd_detect ;;
     sd-mount) sd_mount ;;
     sd-umount) sd_umount ;;
+    create-gnuhome) create_gnuhome ;;
+    eval-bash) eval_bash ;;
     *) copyright ;;
 esac
 
