@@ -123,13 +123,155 @@ yk_prereq() {
     fi
 }
 
-create_gnuhome() {
+help_master() {
+    cat <<EOF
+This is how to generate your master key. The master key will be used to certify
+other sub keys. This is safer as the master key is kept safe, always managed
+on a system without network.
+
+How to create your master key?
+
+type: gpg --expert --full-generate-key
+
+Parameters to use:
+- Select the "RSA (set your own capabilities)" which is usually option 8.
+- Make sure you create a certify key. Toggle off SIGN and ENCRYPT.
+- create a 4096 bits size key
+- set no expiration date. This key will be locked down, and only used
+  to "certify" subkeys.
+- enter a strong password. Using diceware of 5 or more words is a good idea
+
+More details about creating a master key: https://github.com/drduh/YubiKey-Guide#master-key
+More details about diceware: https://en.wikipedia.org/wiki/Diceware
+EOF
+
+}
+
+create_env() {
     GNUPGHOME="$(mktemp -d -t 'gym.XXXXXXXXXX')"
     export GNUPGHOME
 
-    printf "created a temporary home for your keys here %s\n\nmake sure to export GNUPGHOME=%s\nor run: eval \$($0 eval-bash)\n" "$GNUPGHOME" "$GNUPGHOME"
+    printf "created a temporary home for your keys here %s\n\n" "$GNUPGHOME"
+
+    # TODO move to image build
+    wget -O $GNUPGHOME/gpg.conf https://raw.githubusercontent.com/drduh/config/master/gpg.conf
+
+    local line
+    line="$(gpg -k | grep pub | grep '\[C\]')"
+    line="${line##*rsa4096/}"
+    KEYID="${line%% *}"
+    export KEYID
+
+    printf "Don't forget to source GNUPGHOME and KEYID with the eval \$(%s eval-bash) command\n\n" "$0"
 
     write_state
+}
+
+detect_master() {
+    local line
+    line="$(gpg -k | grep pub | grep '\[C\]')"
+    line="${line##*rsa4096/}"
+    KEYID="${line%% *}"
+    export KEYID
+
+    test -z "$KEYID" && echo "Key not found. make sure you have imported the keys in the newly created keystore." && exit 1
+
+    printf "Don't forget to source GNUPGHOME and KEYID with the command:\n\teval \$(%s eval-bash)\n\n" "$0"
+
+    write_state
+}
+
+setup() {
+    echo "Step 1: Creating your temporary GNUPGHOME environment"
+    read -p "Press enter to continue"
+    create_env
+
+    echo "Step 2: Detecting/selecting your yubikey"
+    read -p "Press enter to continue"
+    yk_detect
+
+    echo "Step 2: Detecting/selecting your temp storage"
+    read -p "Press enter to continue"
+    sd_detect
+
+    echo "Step 4: mounting your secure temp storage"
+    read -p "Press enter to continue"
+    sd_mount
+
+    cat <<EOF
+
+NOTE:
+      For new keys, run gym help-new
+
+      For existing keys, run gym help-existing
+
+      run the following command:
+        eval \$($0 eval-bash)
+EOF
+}
+
+help_new() {
+
+    cat <<EOF
+
+For new keys. steps are:
+    1. setup your environment variables
+        eval \$(gym bash-env)
+    2. create your master key
+        gym help-master
+    3. detect your master key and setup the env
+        gym detect-master
+        eval \$(gym bash-env)
+    3. create subkeys
+        gym help-subkeys
+    4. backup your keys and revocation cert
+        gym backup
+    5. send keys to your yubikey
+        gym yk-upload
+EOF
+
+}
+
+backup() {
+    local backup_path new_backup_path gym_mnt
+
+    gym_mnt="/mnt/gym-sd"
+
+    backup_path="${gym_mnt}/backup"
+    test -d "$backup_path" || sudo mkdir "$backup_path"
+
+    new_backup_path="${backup_path}/$(date +%Y%m%d_%H%M%S)"
+    test -d "$new_backup_path" || sudo mkdir "$new_backup_path"
+
+    echo "Backing up master key $KEYID"
+    gpg --armor --export-secret-keys "$KEYID" | sudo tee "$new_backup_path/mastersub.key"
+
+    echo "Backup up sub keys for $KEYID"
+    gpg --armor --export-secret-subkeys "$KEYID" | sudo tee "$new_backup_path/sub.key"
+
+    echo "Generating a revocation certificate"
+    echo "NOTE: select 'Key is superseded' and add a comment 'Lost the key'"
+    gpg --output "$GNUPGHOME"/revoke.asc --gen-revoke "$KEYID"
+    echo "Backing up the revocation certificate"
+    sudo cp "$GNUPGHOME"/revoke.asc "$new_backup_path"
+
+    test ! -s "$backup_path/current" || sudo rm "$backup_path/current"
+    sudo ln -s "${new_backup_path##*/}" "$backup_path/current"
+    sudo chmod 440 "$backup_path"/current/*
+}
+
+import() {
+
+    local current_backup_path gym_mnt
+
+    gym_mnt="/mnt/gym-sd"
+
+    current_backup_path="${gym_mnt}/backup/current"
+    test -s "$current_backup_path" || exit 1
+
+    for keyfile in "$current_backup_path"/{mastersub,sub}*.key; do
+        sudo cat "$keyfile" | gpg --import
+    done
 }
 
 write_state() {
@@ -137,17 +279,19 @@ write_state() {
 GYM_YK_DEV="$GYM_YK_DEV"
 GYM_SD_DEV="$GYM_SD_DEV"
 GNUPGHOME="$GNUPGHOME"
+KEYID="$KEYID"
 EOF
 }
 
 eval_bash() {
-    printf "export GNUPGHOME=\"%s\"\n" "$GNUPGHOME"
+    printf "export GNUPGHOME=\"%s\"\nexport KEYID=\"%s\"" "$GNUPGHOME" "$KEYID"
 }
 
 command="$1"
 shift
 
 case "$command" in
+    setup) setup ;;
     show) show ;;
     yk-info) yk_info ;;
     yk-detect) yk_detect ;;
@@ -155,8 +299,13 @@ case "$command" in
     sd-detect) sd_detect ;;
     sd-mount) sd_mount ;;
     sd-umount) sd_umount ;;
-    create-gnuhome) create_gnuhome ;;
+    create-env) create_env ;;
+    help-master) help_master ;;
+    help-new) help_new ;;
+    detect-master) detect_master ;;
     eval-bash) eval_bash ;;
+    backup) backup ;;
+    import) import ;;
     *) copyright ;;
 esac
 
