@@ -3,7 +3,7 @@
 unset GNUHOME
 
 STATE_FILE="$HOME/.gym.state"
-test -f $STATE_FILE && source "$STATE_FILE"
+test -f "$STATE_FILE" && source "$STATE_FILE"
 
 SUDO="sudo"
 
@@ -75,18 +75,27 @@ sd_mount() {
 
     local gym_part gym_mnt
     gym_part="${GYM_SD_DEV}p1"
-    gym_mnt="/mnt/gym-sd"
     gym_crypt="/dev/mapper/gym-crypt"
 
-    printf "About to luksOpen and mount %s to %s -> %s\n" "$gym_part" "$gym_crypt" "$gym_mnt"
+    printf "About to luksOpen and mount %s to %s\n" "$gym_part" "$gym_crypt"
 
     test -b "$gym_crypt" || "$SUDO" cryptsetup luksOpen "$gym_part" gym-crypt
-    test -d "$gym_mnt" || "$SUDO" mkdir "$gym_mnt"
 
-    $SUDO umount "$gym_mnt" 2>/dev/null
+    sd_part_mount "$gym_crypt" /mnt/gym-sd
+    sd_part_mount "${GYM_SD_DEV}p2" /mnt/gym-sd-pub
+}
 
-    $SUDO mount "$gym_crypt" "$gym_mnt"
-    if test ! -d "$gym_mnt/lost+found"; then
+sd_part_mount() {
+    local mnt_path mnt_dev
+    mnt_dev="$1"
+    mnt_path="$2"
+
+    test -d "$mnt_path" || "$SUDO" mkdir "$mnt_path"
+
+    $SUDO umount "$mnt_path" 2>/dev/null
+
+    $SUDO mount "$mnt_dev" "$mnt_path"
+    if test ! -d "$mnt_path/lost+found"; then
         echo "error mounting drive"
         exit 1
     fi
@@ -105,10 +114,19 @@ sd_umount() {
 
     printf "About to luksClose and umount %s to %s -> %s\n" "$gym_part" "$gym_crypt" "$gym_mnt"
 
-    $SUDO umount "$gym_mnt" 2>/dev/null
-    test -b "$gym_crypt" || "$SUDO" cryptsetup luksClose gym-crypt
+    sd_path_umount "$gym_mnt"
+    sd_path_umount "/mnt/gym-sd-pub"
 
-    if test -d "$gym_mnt/lost+found"; then
+    test -b "$gym_crypt" || "$SUDO" cryptsetup luksClose gym-crypt
+}
+
+sd_path_umount() {
+    local mnt_path
+    mnt_path="$1"
+
+    $SUDO umount "$mnt_path" 2>/dev/null
+
+    if test -d "$mnt_path/lost+found"; then
         echo "error unmounting drive"
         exit 1
     fi
@@ -190,13 +208,9 @@ setup() {
     read -p "Press enter to continue"
     yk_detect
 
-    echo "Step 2: Detecting/selecting your temp storage"
+    echo "Step 3: Detecting/selecting your SD card"
     read -p "Press enter to continue"
     sd_detect
-
-    echo "Step 4: mounting your secure temp storage"
-    read -p "Press enter to continue"
-    sd_mount
 
     cat <<EOF
 
@@ -255,6 +269,9 @@ backup() {
     echo "Backing up the revocation certificate"
     sudo cp "$GNUPGHOME"/revoke.asc "$new_backup_path"
 
+    echo "Exporting public key to /mnt/gym-sd-pub"
+    gpg --armor --export $KEYID | sudo tee /mnt/gym-sd-pub/"gpg-$KEYID-$(date +%F).txt"
+
     test ! -s "$backup_path/current" || sudo rm "$backup_path/current"
     sudo ln -s "${new_backup_path##*/}" "$backup_path/current"
     sudo chmod 440 "$backup_path"/current/*
@@ -276,15 +293,56 @@ import() {
 
 write_state() {
     cat >"$STATE_FILE" <<EOF
-GYM_YK_DEV="$GYM_YK_DEV"
-GYM_SD_DEV="$GYM_SD_DEV"
-GNUPGHOME="$GNUPGHOME"
-KEYID="$KEYID"
+export GYM_YK_DEV="$GYM_YK_DEV"
+export GYM_SD_DEV="$GYM_SD_DEV"
+export GNUPGHOME="$GNUPGHOME"
+export KEYID="$KEYID"
 EOF
 }
 
 eval_bash() {
-    printf "export GNUPGHOME=\"%s\"\nexport KEYID=\"%s\"" "$GNUPGHOME" "$KEYID"
+    cat "$STATE_FILE"
+}
+
+sd_wipe() {
+    echo "We are about to wipe your sd card $GYM_SD_DEV"
+    read -p "Press enter to continue, or Control + C to abort"
+
+    # TODO implement feature toggle
+    # sudo dd if=/dev/urandom of="$GYM_SD_DEV" bs=4M status=progress
+
+    echo "Now lets partition $GYM_SD_DEV with two partitions:"
+    echo "  The first one an luks encrypted drive for your key backups"
+    echo "  The 2nd one a public partition to store your public keys"
+    read -p "Press enter to continue, or Control + C to abort"
+    sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' <<EOF | sudo fdisk "${GYM_SD_DEV}"
+o # clear the in memory partition table
+n # new partition
+p # primary partition
+1 # partition number 1
+  # default - start at beginning of disk
++1024M # 1Gig parttion
+n # new partition
+p # primary partition
+2 # partion number 2
+  # default, start immediately after preceding partition
+  # default, extend partition to end of disk
+p # print the in-memory partition table
+w # write the partition table
+q # and we're done
+EOF
+
+    echo "Time to encrypt the first partition $GYM_SD_DEVp1"
+    echo "Select a strong password, like a diceware password"
+    read -p "Press enter to continue, or Control + C to abort"
+    sudo cryptsetup luksFormat "${GYM_SD_DEV}p1"
+    sudo cryptsetup luksOpen "${GYM_SD_DEV}p1" gym-crypt
+
+    read -p "Press enter to continue, or Control + C to abort"
+    sudo mkfs.ext4 /dev/mapper/gym-crypt
+    read -p "Press enter to continue, or Control + C to abort"
+    sudo mkfs.ext4 "${GYM_SD_DEV}p2"
+    sudo cryptsetup luksClose gym-crypt
 }
 
 command="$1"
@@ -299,6 +357,7 @@ case "$command" in
     sd-detect) sd_detect ;;
     sd-mount) sd_mount ;;
     sd-umount) sd_umount ;;
+    sd-wipe) sd_wipe ;;
     create-env) create_env ;;
     help-master) help_master ;;
     help-new) help_new ;;

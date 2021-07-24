@@ -1,22 +1,22 @@
 * todos
 
-** TODO Create README.md
-** TODO manage backups on usb/sd cards [3/3]
+** DONE Create README.md
+** TODO manage backups on usb/sd cards [4/4]
 *** DONE detect/select sd card
 *** DONE mount card
 *** DONE umount card
+*** DONE setup sd-card
 ** DONE support main vs sub keys
 ** DONE allow editing keys
 ** DONE import existing keys
 ** DONE backup keys
-** TODO upload keys to yubikeys [1/1]
+** TODO upload keys to yubikeys [1/2]
 *** DONE detect yubikeys
 *** TODO upload to yubikey
-**** make a copy before
 **** set GPG_HOME temporarily to this new folder
 **** send key to yubikey
 **** delete obsolete GPG_HOME
-** TODO publish pubkeys
+** TODO store pubkeys
 ** TODO print keys using paperkey
 ** TODO handle keys offline using a custom image
 ** TODO clone sd cards

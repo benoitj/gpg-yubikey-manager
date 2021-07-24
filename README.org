@@ -1,0 +1,5 @@
+#+TITLE: GPG YUBIKEY MANAGER (GYM)
+
+Highly inspired by workflows described in [[https://github.com/drduh/YubiKey-Guide][DR.Duh yubikey]] page
+
+Highly experimental, read the code before using.
