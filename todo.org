@@ -16,7 +16,7 @@
 **** set GPG_HOME temporarily to this new folder
 **** send key to yubikey
 **** delete obsolete GPG_HOME
-** TODO store pubkeys
+** DONE store pubkeys
 ** TODO print keys using paperkey
 ** TODO handle keys offline using a custom image
 ** TODO clone sd cards

@@ -59,14 +59,6 @@ sd_detect() {
     fi
 }
 
-sd_setup() {
-    # sudo cryptsetup luksFormat /dev/mmcblk0p1
-    # sudo cryptsetup luksOpen /dev/mmcblk0p1 gym-crypt
-    # sudo mkfs.ext4 /dev/mapper/gym-crypt
-    # sudo cryptsetup luksClose gym-crypt
-    echo "todo"
-}
-
 sd_mount() {
     if test -z "$GYM_SD_DEV"; then
         echo "please select your SD/USB device with sd-detect"

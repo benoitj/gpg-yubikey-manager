@@ -3,3 +3,23 @@
 Highly inspired by workflows described in [[https://github.com/drduh/YubiKey-Guide][DR.Duh yubikey]] page
 
 Highly experimental, read the code before using.
+
+
+* how does it work?
+
+it automates many steps of the setup, management, backup of your gpg keys.
+
+* How to use it?
+
+** Prerequisite
+*** you need a yubikey obviously
+*** you need 2 or more sd cards (tested), or usb keys (untested)
+*** you need 1 strong password. see the [[https://en.wikipedia.org/wiki/Diceware][diceware method]]
+*** you need 2 pins (numeric pin code) for the yubikey.
+**** one user pin (access the keys)
+**** one admin pin (add/modify keys, or unlock user pin)
+*** a bootable usb stick.
+**** [[https://github.com/drduh/YubiKey-Guide#prepare-environment][prepare the environment]]
+**** [[https://github.com/drduh/YubiKey-Guide#required-software][required software]]
+
+*** follow the yubikey setup portion (feature configuration + pins setup) from [[https://github.com/drduh/YubiKey-Guide#configure-smartcard][here]].
