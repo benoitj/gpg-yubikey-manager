@@ -337,6 +337,18 @@ EOF
     sudo cryptsetup luksClose gym-crypt
 }
 
+clone_read() {
+    sd_umount
+    echo "Backing up $GYM_SD_DEV"
+    sudo dd if="$GYM_SD_DEV" of=/root/gym-sd-bak.raw status=progress
+}
+
+clone_write() {
+    sd_umount
+    echo "Writing to $GYM_SD_DEV"
+    sudo dd if="/root/gym-sd-bak.raw" of="$GYM_SD_DEV" status=progress
+}
+
 command="$1"
 shift
 
@@ -357,6 +369,8 @@ case "$command" in
     eval-bash) eval_bash ;;
     backup) backup ;;
     import) import ;;
+    clone-read) clone_read ;;
+    clone-write) clone_write ;;
     *) copyright ;;
 esac
 
