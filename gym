@@ -49,7 +49,7 @@ sd_info() {
 
 sd_detect() {
     local sd_selected
-    sd_selected=$(lsblk -l -O --json | jq '.blockdevices[] | {name,hotplug,type,path,"disc-max"} | select (.type=="disk" and .hotplug==true) | .name
+    sd_selected=$(lsblk -l -O --json | jq '.blockdevices[] | {name,hotplug,type,path,"disc-max"} | select (.type=="disk") | .name
 + " " + .path + " " + ."disc-max"' | fzf --prompt "please select your usb/sd card")
 
     if test -n "$sd_selected"; then
